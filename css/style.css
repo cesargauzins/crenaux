@@ -462,6 +462,7 @@ input[type="date"], input[type="time"] { font-variant-numeric: tabular-nums; }
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+.spinner-dark { border-color: var(--line-strong); border-top-color: var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .icon-btn {

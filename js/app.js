@@ -32,6 +32,25 @@
     x: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>`,
   };
 
+  const EXCELJS_URL = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+
+  const loadedScripts = {};
+  function loadScript(src) {
+    loadedScripts[src] ||= new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => {
+        delete loadedScripts[src];
+        reject(new Error("NETWORK"));
+      };
+      document.head.appendChild(s);
+    });
+    return loadedScripts[src];
+  }
+
+  const buildWorkbook = (d) => window.CreneauxExport.build(window.ExcelJS, d, formatDate(d.date));
+
   // ---------- API ----------
 
   async function rpc(fn, args) {
@@ -579,7 +598,7 @@
         <section class="panel panel-flush">
           <div class="panel-head">
             <h2 class="panel-title">Inscrits</h2>
-            <button class="btn btn-ghost btn-sm" data-csv>${ICONS.download} Exporter CSV</button>
+            <button class="btn btn-ghost btn-sm" data-xlsx>${ICONS.download} Exporter Excel</button>
           </div>
           <ul class="slots">
             ${data.slots
@@ -624,24 +643,31 @@
       } catch {}
     }
 
-    function exportCsv() {
-      const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = [["Créneau", "Prénom", "Nom"].map(cell).join(";")];
-      data.slots.forEach((s) =>
-        s.people.forEach((p) => lines.push([`${s.starts}-${s.ends}`, p.first_name, p.last_name].map(cell).join(";")))
-      );
-      const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${data.title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "creneaux"}-${data.date}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+    async function exportXlsx(btn) {
+      const label = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner spinner-dark"></span> Préparation…`;
+      try {
+        await loadScript(EXCELJS_URL);
+        const blob = await buildWorkbook(data);
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${data.title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "creneaux"}-${data.date}.xlsx`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      } catch {
+        toast("Export impossible, réessaie dans un instant", false);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = label;
+      }
     }
 
     app.onclick = async (e) => {
       const copyBtn = e.target.closest("[data-copy]");
       if (copyBtn) return copy(copyBtn.dataset.copy);
-      if (e.target.closest("[data-csv]")) return exportCsv();
+      const xlsxBtn = e.target.closest("[data-xlsx]");
+      if (xlsxBtn) return exportXlsx(xlsxBtn);
       const rm = e.target.closest("[data-remove]");
       if (rm) {
         if (!confirm(`Retirer ${rm.dataset.name} de ce créneau ?`)) return;
