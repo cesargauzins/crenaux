@@ -37,6 +37,9 @@ create table if not exists signups (
   created_at  timestamptz not null default now()
 );
 
+-- Inscriptions arrêtées par le créateur (null = ouvertes).
+alter table events add column if not exists closed_at timestamptz;
+
 create index if not exists slots_event_idx on slots(event_id);
 create index if not exists signups_slot_idx on signups(slot_id);
 
@@ -106,6 +109,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
     'title',    e.title,
     'date',     e.event_date,
     'capacity', e.capacity,
+    'closed',   e.closed_at is not null,
     'slots', coalesce((
       select json_agg(json_build_object(
         'id',     s.id,
@@ -146,6 +150,9 @@ begin
   if not found then
     raise exception 'NOT_FOUND';
   end if;
+  if v_event.closed_at is not null then
+    raise exception 'CLOSED';
+  end if;
 
   select * into v_slot from slots where id = p_slot_id and event_id = v_event.id;
   if not found then
@@ -183,6 +190,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
     'title',     e.title,
     'date',      e.event_date,
     'capacity',  e.capacity,
+    'closed',    e.closed_at is not null,
     'slots', coalesce((
       select json_agg(json_build_object(
         'id',     s.id,
@@ -307,6 +315,20 @@ end;
 $$;
 
 
+-- Arrête (true) ou rouvre (false) les inscriptions via le lien public.
+create or replace function set_closed(p_admin_key text, p_closed boolean) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  update events
+  set closed_at = case when p_closed then coalesce(closed_at, now()) end
+  where admin_key = p_admin_key;
+  if not found then
+    raise exception 'NOT_FOUND';
+  end if;
+end;
+$$;
+
+
 -- Seules les fonctions publiques sont appelables depuis le navigateur.
 revoke all on events, slots, signups from anon, authenticated;
 revoke execute on function random_id(int) from public, anon, authenticated;
@@ -318,5 +340,6 @@ grant execute on function
   get_admin(text),
   delete_signup(text, bigint),
   admin_add_signup(text, bigint, text, text),
-  admin_update_signup(text, bigint, bigint, text, text)
+  admin_update_signup(text, bigint, bigint, text, text),
+  set_closed(text, boolean)
 to anon, authenticated;

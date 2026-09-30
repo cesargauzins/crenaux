@@ -11,6 +11,7 @@
     SLOT_FULL: "Ce créneau vient d'être complété. Choisis-en un autre.",
     ALREADY_REGISTERED: "Une personne avec ce prénom et ce nom est déjà inscrite.",
     INVALID_NAME: "Indique ton prénom et ton nom.",
+    CLOSED: "Les inscriptions sont fermées.",
     INVALID_RANGE: "L'heure de fin doit être après l'heure de début.",
     INVALID_SLOT_COUNT: "Trop de créneaux pour cette plage horaire.",
     INVALID_CAPACITY: "Le nombre de personnes doit être entre 1 et 500.",
@@ -383,11 +384,13 @@
     function drawHero() {
       const free = event.slots.reduce((n, s) => n + Math.max(0, event.capacity - s.taken), 0);
       setHero({
-        eyebrow: "Inscription",
+        eyebrow: event.closed ? "Inscriptions closes" : "Inscription",
         title: event.title,
         meta: [
           ["calendar", formatDate(event.date)],
-          ["users", free ? plural(free, "place libre", "places libres") : "Tout est complet"],
+          event.closed
+            ? ["lock", "Les inscriptions sont fermées"]
+            : ["users", free ? plural(free, "place libre", "places libres") : "Tout est complet"],
         ],
         extra: mine
           ? `<p class="hero-badge">${ICONS.check}Tu es inscrit·e sur <strong>${esc(mine.starts)} – ${esc(mine.ends)}</strong> (${esc(mine.name)})</p>`
@@ -406,22 +409,31 @@
       drawHero();
       app.innerHTML = `
         <section class="panel panel-flush">
-          <h2 class="panel-title">Choisis ton créneau</h2>
-          <ul class="slots">
+          ${
+            event.closed
+              ? `<div class="panel-intro">
+                  <h2 class="panel-title">Inscriptions closes</h2>
+                  <p class="muted">L'organisateur a arrêté les inscriptions. Tu ne peux plus choisir de créneau.</p>
+                </div>`
+              : `<h2 class="panel-title">Choisis ton créneau</h2>`
+          }
+          <ul class="slots${event.closed ? " is-closed" : ""}">
             ${event.slots
               .map((s) => {
                 const left = event.capacity - s.taken;
-                const full = left <= 0;
+                const full = left <= 0 || event.closed;
                 const open = openSlot === s.id;
                 return `<li class="slot${full ? " is-full" : ""}${open ? " is-open" : ""}">
-                  <div class="slot-line">
+                  <div class="slot-line${event.closed ? " no-action" : ""}">
                     <div class="slot-when">
                       <span class="slot-time">${s.starts} <span class="slot-sep">–</span> ${s.ends}</span>
                       ${event.capacity > 1 ? meter(s.taken, event.capacity) : ""}
                     </div>
-                    ${badge(left)}
+                    ${event.closed && left > 0 ? `<span class="badge badge-full">Fermé</span>` : badge(left)}
                     ${
-                      full
+                      event.closed
+                        ? ""
+                        : full
                         ? `<span class="slot-action"></span>`
                         : open
                         ? `<button class="btn btn-ghost btn-sm slot-action" data-cancel>Annuler</button>`
@@ -499,7 +511,7 @@
       } catch (err) {
         const keep = { first: form.first.value, last: form.last.value };
         formError = errorText(err);
-        if (err.message === "SLOT_FULL") {
+        if (err.message === "SLOT_FULL" || err.message === "CLOSED") {
           openSlot = null;
           await reload();
           draw();
@@ -568,7 +580,7 @@
       const people = data.slots.reduce((n, s) => n + s.people.length, 0);
       const total = data.slots.length * data.capacity;
       setHero({
-        eyebrow: isNew ? "Créneaux prêts · envoie le lien" : "Gestion",
+        eyebrow: data.closed ? "Inscriptions arrêtées" : isNew ? "Créneaux prêts · envoie le lien" : "Gestion",
         title: data.title,
         meta: [
           ["calendar", formatDate(data.date)],
@@ -584,6 +596,22 @@
 
       app.innerHTML = `
         <section class="panel">
+          <div class="status${data.closed ? " is-closed" : ""}">
+            <span class="status-dot"></span>
+            <div class="status-text">
+              <strong>${data.closed ? "Inscriptions arrêtées" : "Inscriptions ouvertes"}</strong>
+              <span>${
+                data.closed
+                  ? "Le lien n'accepte plus personne. Tu peux encore ajouter ou modifier des inscrits ici."
+                  : "Tout le monde peut s'inscrire avec le lien à partager."
+              }</span>
+            </div>
+            ${
+              data.closed
+                ? `<button class="btn btn-secondary btn-sm" data-reopen>Rouvrir</button>`
+                : `<button class="btn btn-danger-soft btn-sm" data-close>${ICONS.lock} Arrêter les inscriptions</button>`
+            }
+          </div>
           <div class="share">
             <span class="label">Lien à partager</span>
             <div class="share-field">
@@ -771,6 +799,64 @@
       } catch {}
     }
 
+    // Fenêtre en deux temps : confirmer l'arrêt, puis proposer l'export.
+    function openCloseDialog() {
+      const dialog = document.createElement("dialog");
+      dialog.className = "dialog";
+      dialog.innerHTML = `
+        <div class="dialog-icon dialog-icon-warn">${ICONS.lock}</div>
+        <h2>Arrêter les inscriptions ?</h2>
+        <p>Plus personne ne pourra s'inscrire avec le lien. Tu pourras toujours ajouter ou modifier des inscrits ici, et rouvrir quand tu veux.</p>
+        <p class="error" hidden></p>
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" data-dismiss>Annuler</button>
+          <button class="btn btn-danger" data-confirm>Arrêter les inscriptions</button>
+        </div>`;
+      document.body.appendChild(dialog);
+      dialog.addEventListener("close", () => dialog.remove());
+      dialog.addEventListener("click", async (e) => {
+        // Clic sur le fond : on ferme.
+        if (e.target === dialog || e.target.closest("[data-dismiss]")) return dialog.close();
+        const confirmBtn = e.target.closest("[data-confirm]");
+        if (confirmBtn) {
+          confirmBtn.disabled = true;
+          confirmBtn.innerHTML = `<span class="spinner"></span> Arrêt…`;
+          try {
+            await rpc("set_closed", { p_admin_key: adminKey, p_closed: true });
+            await refresh(true);
+            showExportStep(dialog);
+          } catch (err) {
+            const errEl = dialog.querySelector(".error");
+            errEl.textContent = errorText(err);
+            errEl.hidden = false;
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = "Arrêter les inscriptions";
+          }
+          return;
+        }
+        const xlsx = e.target.closest("[data-xlsx]");
+        if (xlsx) {
+          await exportXlsx(xlsx);
+          dialog.close();
+        }
+      });
+      dialog.showModal();
+    }
+
+    function showExportStep(dialog) {
+      const people = data.slots.reduce((n, s) => n + s.people.length, 0);
+      const total = data.slots.length * data.capacity;
+      dialog.innerHTML = `
+        <div class="dialog-icon">${ICONS.check}</div>
+        <h2>Inscriptions arrêtées</h2>
+        <p><strong>${plural(people, "personne inscrite", "personnes inscrites")}</strong> sur ${plural(total, "place", "places")}. Tu veux récupérer la liste en Excel ?</p>
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" data-dismiss>Plus tard</button>
+          <button class="btn btn-primary" data-xlsx>${ICONS.download} Exporter en Excel</button>
+        </div>`;
+      dialog.querySelector("[data-xlsx]").focus();
+    }
+
     async function exportXlsx(btn) {
       const label = btn.innerHTML;
       btn.disabled = true;
@@ -796,6 +882,20 @@
       if (copyBtn) return copy(copyBtn.dataset.copy);
       const xlsxBtn = e.target.closest("[data-xlsx]");
       if (xlsxBtn) return exportXlsx(xlsxBtn);
+      if (e.target.closest("[data-close]")) return openCloseDialog();
+      const reopen = e.target.closest("[data-reopen]");
+      if (reopen) {
+        reopen.disabled = true;
+        try {
+          await rpc("set_closed", { p_admin_key: adminKey, p_closed: false });
+          await refresh(true);
+          toast("Inscriptions rouvertes");
+        } catch (err) {
+          reopen.disabled = false;
+          toast(errorText(err), false);
+        }
+        return;
+      }
       const add = e.target.closest("[data-add]");
       if (add) return startEditing({ kind: "add", slot: Number(add.dataset.add) });
       const edit = e.target.closest("[data-edit]");
