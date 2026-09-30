@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const config = window.CRENAUX_CONFIG || {};
+  const config = window.CRENEAUX_CONFIG || {};
   const app = document.getElementById("app");
   const hero = document.getElementById("hero");
   const params = new URLSearchParams(location.search);
@@ -96,7 +96,7 @@
   const store = {
     get(key, fallback) {
       try {
-        const v = localStorage.getItem(`crenaux:${key}`);
+        const v = localStorage.getItem(`creneaux:${key}`);
         return v ? JSON.parse(v) : fallback;
       } catch {
         return fallback;
@@ -104,7 +104,7 @@
     },
     set(key, value) {
       try {
-        localStorage.setItem(`crenaux:${key}`, JSON.stringify(value));
+        localStorage.setItem(`creneaux:${key}`, JSON.stringify(value));
       } catch {}
     },
   };

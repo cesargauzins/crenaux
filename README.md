@@ -2,7 +2,7 @@
 
 Petit site pour organiser des créneaux : on choisit une plage horaire, un nombre de créneaux et un nombre de personnes par créneau, puis on partage un lien. Chacun s'inscrit sur un créneau libre avec son prénom et son nom, et le créateur voit la liste des inscrits depuis son lien de gestion.
 
-En ligne sur **https://crenaux.sudoo.fr**
+En ligne sur **https://creneaux.sudoo.fr**
 
 ## Fonctionnement
 
@@ -21,7 +21,7 @@ En ligne sur **https://crenaux.sudoo.fr**
 2. Dans **SQL Editor**, coller le contenu de `supabase/schema.sql` et cliquer sur **Run**.
 3. Dans **Project Settings → API**, copier l'URL du projet et la clé publique (`anon` ou `publishable`), puis les coller dans `js/config.js`.
 4. Dans GitHub, **Settings → Pages** : choisir la source *Deploy from a branch*, puis `main` / `root`. Le domaine personnalisé est lu depuis le fichier `CNAME`.
-5. Chez le registrar de sudoo.fr, ajouter un enregistrement DNS `CNAME` : `crenaux` → `<utilisateur-github>.github.io`.
+5. Chez le registrar de sudoo.fr, ajouter un enregistrement DNS `CNAME` : `creneaux` → `<utilisateur-github>.github.io`.
 
 ## En local
 
