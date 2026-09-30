@@ -219,13 +219,104 @@ end;
 $$;
 
 
+-- Contrôles communs aux écritures du créateur, sous verrou de l'événement.
+-- p_ignore : inscription à exclure des contrôles (celle qu'on modifie).
+create or replace function check_signup(
+  p_event events,
+  p_slot_id bigint,
+  p_first text,
+  p_last text,
+  p_ignore bigint
+) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if p_first is null or p_first = '' or p_last is null or p_last = ''
+     or char_length(p_first) > 60 or char_length(p_last) > 60 then
+    raise exception 'INVALID_NAME';
+  end if;
+  if not exists (select 1 from slots where id = p_slot_id and event_id = p_event.id) then
+    raise exception 'NOT_FOUND';
+  end if;
+  if exists (
+    select 1 from signups g join slots s on s.id = g.slot_id
+    where s.event_id = p_event.id
+      and g.id is distinct from p_ignore
+      and lower(g.first_name) = lower(p_first)
+      and lower(g.last_name) = lower(p_last)
+  ) then
+    raise exception 'ALREADY_REGISTERED';
+  end if;
+  if (select count(*) from signups where slot_id = p_slot_id and id is distinct from p_ignore) >= p_event.capacity then
+    raise exception 'SLOT_FULL';
+  end if;
+end;
+$$;
+
+
+create or replace function admin_add_signup(
+  p_admin_key text,
+  p_slot_id bigint,
+  p_first_name text,
+  p_last_name text
+) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_event events;
+  v_first text := btrim(p_first_name);
+  v_last  text := btrim(p_last_name);
+begin
+  select * into v_event from events where admin_key = p_admin_key for update;
+  if not found then
+    raise exception 'NOT_FOUND';
+  end if;
+  perform check_signup(v_event, p_slot_id, v_first, v_last, null);
+  insert into signups (slot_id, first_name, last_name) values (p_slot_id, v_first, v_last);
+end;
+$$;
+
+
+-- Modifie le nom et/ou déplace la personne sur un autre créneau.
+create or replace function admin_update_signup(
+  p_admin_key text,
+  p_signup_id bigint,
+  p_slot_id bigint,
+  p_first_name text,
+  p_last_name text
+) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_event events;
+  v_first text := btrim(p_first_name);
+  v_last  text := btrim(p_last_name);
+begin
+  select * into v_event from events where admin_key = p_admin_key for update;
+  if not found then
+    raise exception 'NOT_FOUND';
+  end if;
+  if not exists (
+    select 1 from signups g join slots s on s.id = g.slot_id
+    where g.id = p_signup_id and s.event_id = v_event.id
+  ) then
+    raise exception 'NOT_FOUND';
+  end if;
+  perform check_signup(v_event, p_slot_id, v_first, v_last, p_signup_id);
+  update signups
+  set slot_id = p_slot_id, first_name = v_first, last_name = v_last
+  where id = p_signup_id;
+end;
+$$;
+
+
 -- Seules les fonctions publiques sont appelables depuis le navigateur.
 revoke all on events, slots, signups from anon, authenticated;
 revoke execute on function random_id(int) from public, anon, authenticated;
+revoke execute on function check_signup(events, bigint, text, text, bigint) from public, anon, authenticated;
 grant execute on function
   create_event(text, date, time, time, int, int),
   get_event(text),
   sign_up(text, bigint, text, text),
   get_admin(text),
-  delete_signup(text, bigint)
+  delete_signup(text, bigint),
+  admin_add_signup(text, bigint, text, text),
+  admin_update_signup(text, bigint, bigint, text, text)
 to anon, authenticated;

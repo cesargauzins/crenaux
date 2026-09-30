@@ -8,7 +8,7 @@ En ligne sur **https://creneaux.sudoo.fr**
 
 - **`/`** : création des créneaux (titre, date, plage horaire, nombre de créneaux, personnes par créneau).
 - **`/?e=<id>`** : le lien à partager. On voit les créneaux et les places restantes, mais pas les noms.
-- **`/?a=<clé>`** : le lien de gestion du créateur, avec les inscrits par créneau, la possibilité de retirer quelqu'un et l'export CSV.
+- **`/?a=<clé>`** : le lien de gestion du créateur. Il voit les inscrits par créneau, peut ajouter, modifier, déplacer ou retirer quelqu'un, et exporter la liste en Excel.
 
 ## Stack
 

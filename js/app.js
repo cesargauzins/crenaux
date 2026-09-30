@@ -29,6 +29,8 @@
     download: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>`,
     arrow: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`,
     lock: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>`,
+    pencil: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>`,
+    plus: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`,
     x: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>`,
   };
 
@@ -557,6 +559,9 @@
 
     document.title = `${data.title} · Gestion · Créneaux`;
     const shareUrl = `${baseUrl}?e=${data.public_id}`;
+    // Saisie en cours : { kind: "add", slot } ou { kind: "edit", id }.
+    let editing = null;
+    let editError = "";
     const adminUrl = `${baseUrl}?a=${adminKey}`;
 
     function draw() {
@@ -601,45 +606,168 @@
             <button class="btn btn-ghost btn-sm" data-xlsx>${ICONS.download} Exporter Excel</button>
           </div>
           <ul class="slots">
-            ${data.slots
-              .map(
-                (s) => `<li class="slot slot-admin${s.people.length >= data.capacity ? " is-complete" : ""}">
-                  <div class="slot-line">
-                    <div class="slot-when">
-                      <span class="slot-time">${s.starts} <span class="slot-sep">–</span> ${s.ends}</span>
-                      ${meter(s.people.length, data.capacity)}
-                    </div>
-                    <span class="count">${s.people.length}<span>/${data.capacity}</span></span>
-                  </div>
-                  ${
-                    s.people.length
-                      ? `<ul class="people">
-                          ${s.people
-                            .map(
-                              (p) => `<li class="person">
-                                <span class="avatar">${esc(initials(p))}</span>
-                                <span class="person-name">${esc(p.first_name)} ${esc(p.last_name)}</span>
-                                <button class="icon-btn" data-remove="${p.id}" data-name="${esc(p.first_name)} ${esc(p.last_name)}" title="Retirer" aria-label="Retirer ${esc(p.first_name)} ${esc(p.last_name)}">${ICONS.x}</button>
-                              </li>`
-                            )
-                            .join("")}
-                        </ul>`
-                      : `<p class="people-empty">Personne pour l'instant</p>`
-                  }
-                </li>`
-              )
-              .join("")}
+            ${data.slots.map(slotBlock).join("")}
           </ul>
         </section>`;
+
+      const form = app.querySelector(".person-form");
+      if (form) {
+        form.first.focus();
+        form.addEventListener("submit", onSave);
+      }
     }
 
-    async function refresh() {
+    function slotBlock(s) {
+      const full = s.people.length >= data.capacity;
+      const adding = editing && editing.kind === "add" && editing.slot === s.id;
+      return `<li class="slot slot-admin${full ? " is-complete" : ""}">
+        <div class="slot-line">
+          <div class="slot-when">
+            <span class="slot-time">${s.starts} <span class="slot-sep">–</span> ${s.ends}</span>
+            ${meter(s.people.length, data.capacity)}
+          </div>
+          <span class="count">${s.people.length}<span>/${data.capacity}</span></span>
+        </div>
+        ${
+          s.people.length
+            ? `<ul class="people">${s.people.map((p) => personRow(p, s)).join("")}</ul>`
+            : adding
+            ? ""
+            : `<p class="people-empty">Personne pour l'instant</p>`
+        }
+        ${
+          adding
+            ? personForm({ first: "", last: "", slot: s.id, submit: "Ajouter" })
+            : full || editing
+            ? ""
+            : `<button class="add-btn" data-add="${s.id}">${ICONS.plus} Ajouter une personne</button>`
+        }
+      </li>`;
+    }
+
+    function personRow(p, s) {
+      if (editing && editing.kind === "edit" && editing.id === p.id) {
+        return `<li>${personForm({ first: p.first_name, last: p.last_name, slot: s.id, submit: "Enregistrer", moving: true })}</li>`;
+      }
+      const name = `${esc(p.first_name)} ${esc(p.last_name)}`;
+      return `<li class="person">
+        <span class="avatar">${esc(initials(p))}</span>
+        <span class="person-name">${name}</span>
+        <span class="person-actions">
+          <button class="icon-btn" data-edit="${p.id}" title="Modifier" aria-label="Modifier ${name}"${editing ? " disabled" : ""}>${ICONS.pencil}</button>
+          <button class="icon-btn icon-btn-danger" data-remove="${p.id}" data-name="${name}" title="Retirer" aria-label="Retirer ${name}"${editing ? " disabled" : ""}>${ICONS.x}</button>
+        </span>
+      </li>`;
+    }
+
+    // Formulaire en ligne, pour ajouter ou modifier une personne.
+    function personForm({ first, last, slot, submit, moving }) {
+      const options = data.slots
+        .map((s) => {
+          const left = data.capacity - s.people.length;
+          const blocked = s.id !== slot && left <= 0;
+          return `<option value="${s.id}"${s.id === slot ? " selected" : ""}${blocked ? " disabled" : ""}>${s.starts} – ${s.ends}${blocked ? " · complet" : ""}</option>`;
+        })
+        .join("");
+      return `<form class="person-form" novalidate>
+        <label class="field">
+          <span class="label">Prénom</span>
+          <input name="first" maxlength="60" value="${esc(first)}" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">Nom</span>
+          <input name="last" maxlength="60" value="${esc(last)}" autocomplete="off" required>
+        </label>
+        ${
+          moving
+            ? `<label class="field field-wide">
+                <span class="label">Créneau</span>
+                <select name="slot">${options}</select>
+              </label>`
+            : `<input type="hidden" name="slot" value="${slot}">`
+        }
+        <div class="person-form-actions">
+          <button class="btn btn-primary btn-sm" type="submit">${ICONS.check} ${submit}</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-cancel>Annuler</button>
+        </div>
+        ${editError ? `<p class="error">${esc(editError)}</p>` : ""}
+      </form>`;
+    }
+
+    async function onSave(e) {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const values = {
+        first: form.first.value.trim(),
+        last: form.last.value.trim(),
+        slot: Number(form.slot.value),
+      };
+      if (!values.first || !values.last) return showFormError(form, ERRORS.INVALID_NAME);
+      const btn = form.querySelector("button[type=submit]");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Enregistrement…`;
+      try {
+        if (editing.kind === "add") {
+          await rpc("admin_add_signup", {
+            p_admin_key: adminKey,
+            p_slot_id: values.slot,
+            p_first_name: values.first,
+            p_last_name: values.last,
+          });
+        } else {
+          await rpc("admin_update_signup", {
+            p_admin_key: adminKey,
+            p_signup_id: editing.id,
+            p_slot_id: values.slot,
+            p_first_name: values.first,
+            p_last_name: values.last,
+          });
+        }
+        const done = editing.kind === "add" ? `${values.first} ${values.last} ajouté·e` : "Modification enregistrée";
+        stopEditing();
+        await refresh(true);
+        toast(done);
+      } catch (err) {
+        // Un créneau a pu se remplir entre-temps : on recharge les places.
+        if (err.message === "SLOT_FULL") await refresh(true, false);
+        showFormError(app.querySelector(".person-form") || form, errorText(err), values);
+      }
+    }
+
+    function showFormError(form, message, values) {
+      const keep = values || { first: form.first.value, last: form.last.value, slot: Number(form.slot.value) };
+      editError = message;
+      draw();
+      const again = app.querySelector(".person-form");
+      if (!again) return;
+      again.first.value = keep.first;
+      again.last.value = keep.last;
+      if (again.slot.tagName === "SELECT" && !again.slot.querySelector(`option[value="${keep.slot}"]:disabled`)) {
+        again.slot.value = String(keep.slot);
+      }
+    }
+
+    function startEditing(state) {
+      editing = state;
+      editError = "";
+      draw();
+    }
+
+    function stopEditing() {
+      editing = null;
+      editError = "";
+    }
+
+    // force : redessine même si rien n'a changé ; redraw=false : met juste les données à jour.
+    async function refresh(force = false, redraw = true) {
+      // Pas de rechargement automatique pendant une saisie : on écraserait le formulaire.
+      if (editing && !force) return;
       try {
         const fresh = await rpc("get_admin", { p_admin_key: adminKey });
-        if (fresh && JSON.stringify(fresh) !== JSON.stringify(data)) {
-          data = fresh;
-          draw();
-        }
+        if (!fresh) return;
+        const changed = JSON.stringify(fresh) !== JSON.stringify(data);
+        data = fresh;
+        if (redraw && (changed || force)) draw();
       } catch {}
     }
 
@@ -668,6 +796,14 @@
       if (copyBtn) return copy(copyBtn.dataset.copy);
       const xlsxBtn = e.target.closest("[data-xlsx]");
       if (xlsxBtn) return exportXlsx(xlsxBtn);
+      const add = e.target.closest("[data-add]");
+      if (add) return startEditing({ kind: "add", slot: Number(add.dataset.add) });
+      const edit = e.target.closest("[data-edit]");
+      if (edit) return startEditing({ kind: "edit", id: Number(edit.dataset.edit) });
+      if (e.target.closest("[data-cancel]")) {
+        stopEditing();
+        return draw();
+      }
       const rm = e.target.closest("[data-remove]");
       if (rm) {
         if (!confirm(`Retirer ${rm.dataset.name} de ce créneau ?`)) return;
@@ -684,6 +820,12 @@
     };
     app.addEventListener("focusin", (e) => {
       if (e.target.classList.contains("share-input")) e.target.select();
+    });
+    app.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && editing) {
+        stopEditing();
+        draw();
+      }
     });
 
     draw();

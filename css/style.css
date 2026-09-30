@@ -479,8 +479,11 @@ input[type="date"], input[type="time"] { font-variant-numeric: tabular-nums; }
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 .icon-btn svg { width: 16px; height: 16px; }
-.person:hover .icon-btn, .icon-btn:focus-visible { opacity: 1; }
-.icon-btn:hover { background: var(--danger-bg); color: var(--danger); }
+.person:hover .icon-btn:not(:disabled), .icon-btn:focus-visible { opacity: 1; }
+.icon-btn:hover:not(:disabled) { background: var(--soft); color: var(--primary); }
+.icon-btn-danger:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger); }
+.icon-btn:disabled { opacity: 0.25; cursor: default; }
+.person-actions { display: flex; gap: 2px; }
 
 /* ---------- Récents ---------- */
 
@@ -589,7 +592,7 @@ input[type="date"], input[type="time"] { font-variant-numeric: tabular-nums; }
 .people { display: grid; gap: 4px; padding-bottom: 18px; }
 .person {
   display: grid;
-  grid-template-columns: 34px 1fr 32px;
+  grid-template-columns: 34px 1fr auto;
   align-items: center;
   gap: 12px;
   margin-right: -8px;
@@ -613,6 +616,53 @@ input[type="date"], input[type="time"] { font-variant-numeric: tabular-nums; }
   color: var(--muted);
   font-size: 14px;
 }
+
+.add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 18px;
+  padding: 6px 12px 6px 8px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--primary);
+  font: 700 14px var(--font);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.add-btn svg { width: 16px; height: 16px; stroke-width: 2.5; }
+.add-btn:hover { border-color: var(--primary); background: var(--soft-2); }
+
+.person-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  margin: 4px -28px 18px;
+  padding: 18px 28px;
+  background: var(--soft-2);
+  box-shadow: inset 4px 0 0 var(--primary);
+}
+/* Dans une liste, l'espacement du bas vient déjà de .people. */
+.people .person-form { margin-bottom: 0; }
+.person-form .field-wide, .person-form .error, .person-form-actions { grid-column: 1 / -1; }
+.person-form input { height: 44px; }
+.person-form-actions { display: flex; gap: 8px; }
+
+select {
+  width: 100%;
+  height: 44px;
+  padding: 0 40px 0 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371827a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center / 16px;
+  color: var(--text);
+  font: 600 16px var(--font);
+  font-variant-numeric: tabular-nums;
+  appearance: none;
+  cursor: pointer;
+}
+select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--soft); }
 
 /* ---------- Partage ---------- */
 
@@ -720,6 +770,9 @@ input[type="date"], input[type="time"] { font-variant-numeric: tabular-nums; }
   .slot-admin .slot-line { padding: 16px 0; }
   .slot-time { font-size: 18px; }
   .slot-form { grid-template-columns: 1fr; }
+  .person-form { grid-template-columns: 1fr; margin: 4px -18px 16px; padding: 16px 18px; }
+  .person-form-actions .btn { flex: 1; }
+  .icon-btn { opacity: 1; }
   .slot-form .btn { width: 100%; }
   .share-field { grid-template-columns: 1fr; }
   .share-field .btn { width: 100%; }
